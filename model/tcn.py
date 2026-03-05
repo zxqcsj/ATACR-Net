@@ -6,9 +6,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-
-
-
 LEAKY_ALPHA = 0.1
 def init_param(modules):
     for m in modules:
@@ -253,57 +250,49 @@ class DeTGC(nn.Module):
 
 
 class MultiScale_TemporalModeling(nn.Module):
-    def __init__(self, in_channels, out_channels, eta, kernel_size=5, stride=1, dilations=1,
+    def __init__(self, in_channels, out_channels, eta, kernel_size=5, stride=1, dilations=1, 
                  num_scale=1, num_frame=64):
         super(MultiScale_TemporalModeling, self).__init__()
-
+        
         scale_channels = out_channels // num_scale
         self.num_scale = num_scale if in_channels !=3 else 1
-
 
         self.tcn1 = nn.Sequential(
             PointWiseTCN(in_channels, scale_channels),
             nn.LeakyReLU(LEAKY_ALPHA),
-            DeTGC(scale_channels,
-                  scale_channels,
+            DeTGC(scale_channels, 
+                  scale_channels, 
                   eta,
-                  kernel_size=5,
-                  stride=stride,
-                  dilation=1,
-                  num_scale=num_scale,
+                  kernel_size=5, 
+                  stride=stride, 
+                  dilation=1, 
+                  num_scale=num_scale, 
                   num_frame=num_frame)
         )
-
+        
         self.tcn2 = nn.Sequential(
             PointWiseTCN(in_channels, scale_channels),
             nn.LeakyReLU(LEAKY_ALPHA),
-            DeTGC(scale_channels,
-                  scale_channels,
+            DeTGC(scale_channels, 
+                  scale_channels, 
                   eta,
-                  kernel_size=5,
-                  stride=stride,
-                  dilation=2,
-                  num_scale=num_scale,
+                  kernel_size=5, 
+                  stride=stride, 
+                  dilation=2, 
+                  num_scale=num_scale, 
                   num_frame=num_frame)
         )
-
+        
         self.maxpool3x1 = nn.Sequential(
             PointWiseTCN(in_channels, scale_channels),
             nn.LeakyReLU(LEAKY_ALPHA),
             nn.MaxPool2d(kernel_size=(3,1), stride=(stride,1), padding=(1,0)),
-            nn.BatchNorm2d(scale_channels)
+            nn.BatchNorm2d(scale_channels) 
         )
         self.conv1x1 = PointWiseTCN(in_channels, scale_channels, stride=stride)
 
-        
     def forward(self, x):
-        branch1 = self.tcn1(x)        # [B, scale_channels, T, V]
-        branch2 = self.tcn2(x)        # [B, scale_channels, T, V]
-        branch3 = self.maxpool3x1(x)  # [B, scale_channels, T, V]
-        branch4 = self.conv1x1(x)     # [B, scale_channels, T, V]
-
-        
-        x = torch.cat([branch1, branch2, branch3, branch4], 1)  # [B, 4*scale_channels, T, V]
+        x = torch.cat([self.tcn1(x), self.tcn2(x), self.maxpool3x1(x), self.conv1x1(x)], 1)
         return x
     
     
