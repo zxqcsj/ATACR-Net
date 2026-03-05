@@ -14,7 +14,7 @@ from graph.tools import get_groups
 from model.lib import ST_RenovateNet
 from model.tcn import MultiScale_TemporalModeling, PointWiseTCN, DeTGC, init_param
 
-# HDGCN相关的常量定义
+# TCN相关的导入和常量定义
 LEAKY_ALPHA = 0.1
 
 
@@ -126,6 +126,7 @@ class TemporalConv(nn.Module):
 
 
 
+
 class residual_conv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=5, stride=1):
         super(residual_conv, self).__init__()
@@ -213,12 +214,12 @@ class EdgeConv(nn.Module):
 
 
 class AHA(nn.Module):
-    def __init__(self, in_channels, num_layers, CoM, dataset='NTU'):
+    def __init__(self, in_channels, num_layers, CoM):
         super(AHA, self).__init__()
 
         self.num_layers = num_layers
 
-        groups = get_groups(dataset=dataset, CoM=CoM)
+        groups = get_groups(dataset='NTU', CoM=CoM)
 
         for i, group in enumerate(groups):
             group = [i - 1 for i in group]
@@ -261,7 +262,7 @@ class AHA(nn.Module):
 
 
 class HD_Gconv(nn.Module):
-    def __init__(self, in_channels, out_channels, A, adaptive=True, residual=True, att=False, CoM=21, dataset='NTU'):
+    def __init__(self, in_channels, out_channels, A, adaptive=True, residual=True, att=False, CoM=21):
         super(HD_Gconv, self).__init__()
         self.num_layers = A.shape[0]
         self.num_subset = A.shape[1]
@@ -295,7 +296,7 @@ class HD_Gconv(nn.Module):
             self.conv.append(self.conv_d)
 
         if self.att:
-            self.aha = AHA(out_channels, num_layers=self.num_layers, CoM=CoM, dataset=dataset)
+            self.aha = AHA(out_channels, num_layers=self.num_layers, CoM=CoM)
 
         if residual:
             if in_channels != out_channels:
@@ -354,47 +355,37 @@ class HD_Gconv(nn.Module):
 
 class TCN_GCN_unit(nn.Module):
     def __init__(self, in_channels, out_channels, A, stride=1, residual=True, adaptive=True,
-                 kernel_size=5, dilations=[1, 2], att=True, CoM=21, dataset='NTU', eta=4, num_frame=64):
+                 kernel_size=5, att=True, CoM=21, eta=4, num_frame=64):
         super(TCN_GCN_unit, self).__init__()
-        self.gcn1 = HD_Gconv(in_channels, out_channels, A, adaptive=adaptive, att=att, CoM=CoM, dataset=dataset)
+        self.gcn1 = HD_Gconv(in_channels, out_channels, A, adaptive=adaptive, att=att, CoM=CoM)
 
-        # 使用改进HDGCN中的多尺度时间建模模块
-        # 完全复制改进hdgcn中TCN_GCN_unit的调用方式
+        # 直接使用TCN的多尺度时间建模模块
+        # 完全复制tcn中Basic_Block的调用方式
         self.tcn1 = MultiScale_TemporalModeling(
             out_channels,
             out_channels,
             eta,
             stride=stride,
-            num_scale=4,  # 固定为4，与改进hdgcn中Basic_Block一致
+            num_scale=4,  # 固定为4，与tcn中Basic_Block一致
             num_frame=num_frame
         )
 
-        self.relu = nn.LeakyReLU(LEAKY_ALPHA)
-
-        # 参考TCN中Basic_Block的双残差连接设计
-        if in_channels != out_channels:
-            self.residual1 = residual_conv(in_channels, out_channels, kernel_size=1, stride=1)
-        else:
-            self.residual1 = lambda x: x
-
+        self.relu = nn.ReLU(inplace=True)
         if not residual:
-            self.residual2 = lambda x: 0
+            self.residual = lambda x: 0
+
         elif (in_channels == out_channels) and (stride == 1):
-            self.residual2 = lambda x: x
+            self.residual = lambda x: x
+
         else:
-            self.residual2 = residual_conv(in_channels, out_channels, kernel_size=1, stride=stride)
+            self.residual = residual_conv(in_channels, out_channels, kernel_size=1, stride=stride)
 
         self.se = SEAttention(channel=out_channels)  # 最后用SE筛选关键特征
 
     def forward(self, x):
-        # 参考TCN中Basic_Block的双重激活模式
-        res = x
-        x = self.gcn1(x)
-        x = self.relu(x + self.residual1(res))  # 第一次激活：GCN + residual1
-        x = self.tcn1(x)
-        x = self.relu(x + self.residual2(res))  # 第二次激活：TCN + residual2
+        y = self.relu(self.tcn1(self.gcn1(x)) + self.residual(x))
         # 使用 SE 注意力机制融合两个特征
-        out = self.se(x)  # 筛选最关键的特征
+        out = self.se(y)  # 筛选最关键的特征
 
         return out
 
@@ -403,30 +394,30 @@ class Model(nn.Module):
     def build_basic_blocks(self):
         A, CoM = self.graph.A
         base_channels = 64
-        # TCN时间建模参数 (参考改进hdgcn设置)
+        # TCN时间建模参数 (参考degcn设置)
         # 需要为每一层计算正确的num_frame，考虑stride的影响
         base_frame = self.num_frame
 
         self.l1 = TCN_GCN_unit(3, base_channels, A, residual=False, adaptive=self.adaptive, att=False, CoM=CoM,
-                              dataset=self.dataset, eta=self.eta, num_frame=base_frame)
+                              eta=self.eta, num_frame=base_frame)
         self.l2 = TCN_GCN_unit(base_channels, base_channels, A, adaptive=self.adaptive, CoM=CoM,
-                              dataset=self.dataset, eta=self.eta, num_frame=base_frame)
+                              eta=self.eta, num_frame=base_frame)
         self.l3 = TCN_GCN_unit(base_channels, base_channels, A, adaptive=self.adaptive, CoM=CoM,
-                              dataset=self.dataset, eta=self.eta, num_frame=base_frame)
+                              eta=self.eta, num_frame=base_frame)
         self.l4 = TCN_GCN_unit(base_channels, base_channels, A, adaptive=self.adaptive, CoM=CoM,
-                              dataset=self.dataset, eta=self.eta, num_frame=base_frame)
+                              eta=self.eta, num_frame=base_frame)
         self.l5 = TCN_GCN_unit(base_channels, base_channels * 2, A, stride=2, adaptive=self.adaptive, CoM=CoM,
-                              dataset=self.dataset, eta=self.eta, num_frame=base_frame)
+                              eta=self.eta, num_frame=base_frame)
         self.l6 = TCN_GCN_unit(base_channels * 2, base_channels * 2, A, adaptive=self.adaptive, CoM=CoM,
-                              dataset=self.dataset, eta=self.eta, num_frame=base_frame//2)
+                              eta=self.eta, num_frame=base_frame//2)
         self.l7 = TCN_GCN_unit(base_channels * 2, base_channels * 2, A, adaptive=self.adaptive, CoM=CoM,
-                              dataset=self.dataset, eta=self.eta, num_frame=base_frame//2)
+                              eta=self.eta, num_frame=base_frame//2)
         self.l8 = TCN_GCN_unit(base_channels * 2, base_channels * 4, A, stride=2, adaptive=self.adaptive, CoM=CoM,
-                              dataset=self.dataset, eta=self.eta, num_frame=base_frame//2)
+                              eta=self.eta, num_frame=base_frame//2)
         self.l9 = TCN_GCN_unit(base_channels * 4, base_channels * 4, A, adaptive=self.adaptive, CoM=CoM,
-                              dataset=self.dataset, eta=self.eta, num_frame=base_frame//4)
+                              eta=self.eta, num_frame=base_frame//4)
         self.l10 = TCN_GCN_unit(base_channels * 4, base_channels * 4, A, adaptive=self.adaptive, CoM=CoM,
-                               dataset=self.dataset, eta=self.eta, num_frame=base_frame//4)
+                               eta=self.eta, num_frame=base_frame//4)
 
     def build_cl_blocks(self):
         if self.cl_mode == "ST-Multi-Level":
@@ -451,7 +442,7 @@ class Model(nn.Module):
                  base_channel=64, drop_out=0, adaptive=True,
                  # Module Params
                  cl_mode=None, multi_cl_weights=[1, 1, 1, 1], cl_version='V0', pred_threshold=0, use_p_map=True,
-                 # TCN Temporal Modeling Params (参考改进hdgcn设置)
+                 # TCN Temporal Modeling Params (参考degcn设置)
                  eta=4,
                  ):
         super(Model, self).__init__()
