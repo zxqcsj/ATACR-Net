@@ -77,145 +77,55 @@ def get_parser():
     # parameter priority: command line > config > default
     parser = argparse.ArgumentParser(
         description='Spatial Temporal Graph Convolution Network')
-    parser.add_argument(
-        '--work-dir',
-        default='./work_dir/temp',
-        help='the work folder for storing results')
-
+    parser.add_argument('--work-dir', default='./work_dir/temp', help='the work folder for storing results')
     parser.add_argument('-model_saved_name', default='')
-    parser.add_argument(
-        '--config',
-        default='./config/nturgbd-cross-view/test_bone.yaml',
-        help='path to the configuration file')
+    parser.add_argument('--config', default='./config/nturgbd-cross-view/test_bone.yaml', help='path to the configuration file')
 
     # processor
-    parser.add_argument(
-        '--phase', default='train', help='must be train or test')
-    parser.add_argument(
-        '--save-score',
-        type=str2bool,
-        default=False,
-        help='if ture, the classification score will be stored')
+    parser.add_argument('--phase', default='train', help='must be train or test')
+    parser.add_argument('--save-score', type=str2bool, default=False, help='if ture, the classification score will be stored')
 
-    # visulize and debug
-    parser.add_argument(
-        '--seed', type=int, default=1, help='random seed for pytorch')
-    parser.add_argument(
-        '--log-interval',
-        type=int,
-        default=100,
-        help='the interval for printing messages (#iteration)')
-    parser.add_argument(
-        '--save-interval',
-        type=int,
-        default=1,
-        help='the interval for storing models (#iteration)')
-    parser.add_argument(
-        '--save-epoch',
-        type=int,
-        default=30,
-        help='the start epoch to save model (#iteration)')
-    parser.add_argument(
-        '--eval-interval',
-        type=int,
-        default=5,
-        help='the interval for evaluating models (#iteration)')
-    parser.add_argument(
-        '--print-log',
-        type=str2bool,
-        default=True,
-        help='print logging or not')
-    parser.add_argument(
-        '--show-topk',
-        type=int,
-        default=[1, 5],
-        nargs='+',
-        help='which Top K accuracy will be shown')
+    # visualize, debug & record
+    parser.add_argument('--seed', type=int, default=1, help='random seed for pytorch')
+    parser.add_argument('--log-interval', type=int, default=100, help='the interval for printing messages (#iteration)')
+    parser.add_argument('--save-interval', type=int, default=1, help='the interval for storing models (#iteration)')
+    parser.add_argument('--save-epoch', type=int, default=30, help='the start epoch to save model (#iteration)')
+    parser.add_argument('--eval-interval', type=int, default=5, help='the interval for evaluating models (#iteration)')
+    parser.add_argument('--print-log', type=str2bool, default=True, help='print logging or not')
+    parser.add_argument('--show-topk', type=int, default=[1, 5], nargs='+', help='which Top K accuracy will be shown')
 
     # feeder
-    parser.add_argument(
-        '--feeder', default='feeder.feeder', help='data loader will be used')
-    parser.add_argument(
-        '--num-worker',
-        type=int,
-        default=32,
-        help='the number of worker for data loader')
-    parser.add_argument(
-        '--train-feeder-args',
-        action=DictAction,
-        default=dict(),
-        help='the arguments of data loader for training')
-    parser.add_argument(
-        '--test-feeder-args',
-        action=DictAction,
-        default=dict(),
-        help='the arguments of data loader for test')
+    parser.add_argument('--feeder', default='feeder.feeder', help='data loader will be used')
+    parser.add_argument('--num-worker', type=int, default=32, help='the number of worker for data loader')
+    parser.add_argument('--train-feeder-args', action=DictAction, default=dict(), help='the arguments of data loader for training')
+    parser.add_argument('--test-feeder-args', action=DictAction, default=dict(), help='the arguments of data loader for test')
 
-    # model
+    # classification model
     parser.add_argument('--model', default=None, help='the model will be used')
-    parser.add_argument(
-        '--model-args',
-        action=DictAction,
-        default=dict(),
-        help='the arguments of model')
-    parser.add_argument(
-        '--weights',
-        default=None,
-        help='the weights for network initialization')
-    parser.add_argument(
-        '--ignore-weights',
-        type=str,
-        default=[],
-        nargs='+',
-        help='the name of weights which will be ignored in the initialization')
+    parser.add_argument('--model-args', action=DictAction, default=dict(), help='the arguments of model')
+    parser.add_argument('--weights', default=None, help='the weights for network initialization')
+    parser.add_argument('--ignore-weights', type=str, default=[], nargs='+', help='the name of weights which will be ignored in the initialization')
+    parser.add_argument('--cl-mode', choices=['ST-Multi-Level'], default='ST-Multi-Level', help='mode of Contrastive Learning Loss')
+    parser.add_argument('--cl-version', choices=['V0', 'V1', 'V2', "NO FN", "NO FP", "NO FN & FP"], default='V1', help='different way to calculate the cl loss')
+    parser.add_argument('--pred_threshold', type=float, default=0.0, help='threshold to define the confident sample')
+    parser.add_argument('--use_p_map', type=str2bool, default=True, help='whether to add (1 - p_{ik}) to constrain the auxiliary item')
+    parser.add_argument('--start-cl-epoch', type=int, default=-1, help='epoch to optimize cl loss')
+    parser.add_argument('--w-cl-loss', type=float, default=0.1, help='weight of cl loss')
+    parser.add_argument('--w-multi-cl-loss', type=float, default=[0.1, 0.2, 0.5, 1], nargs='+', help='weight of multi-level cl loss')
 
     # optim
-    parser.add_argument(
-        '--base-lr', type=float, default=0.01, help='initial learning rate')
-    parser.add_argument(
-        '--step',
-        type=int,
-        default=[20, 40, 60],
-        nargs='+',
-        help='the epoch where optimizer reduce the learning rate')
-    parser.add_argument(
-        '--device',
-        type=int,
-        default=0,
-        nargs='+',
-        help='the indexes of GPUs for training or testing')
+    parser.add_argument('--base-lr', type=float, default=0.01, help='initial learning rate')
+    parser.add_argument('--step', type=int, default=[20, 40, 60], nargs='+', help='the epoch where optimizer reduce the learning rate')
+    parser.add_argument('--device', type=int, default=0, nargs='+', help='the indexes of GPUs for training or testing')
     parser.add_argument('--optimizer', default='SGD', help='type of optimizer')
-    parser.add_argument(
-        '--nesterov', type=str2bool, default=False, help='use nesterov or not')
-    parser.add_argument(
-        '--batch-size', type=int, default=256, help='training batch size')
-    parser.add_argument(
-        '--test-batch-size', type=int, default=256, help='test batch size')
-    parser.add_argument(
-        '--start-epoch',
-        type=int,
-        default=0,
-        help='start training from which epoch')
-    parser.add_argument(
-        '--num-epoch',
-        type=int,
-        default=80,
-        help='stop training in which epoch')
-    parser.add_argument(
-        '--weight-decay',
-        type=float,
-        default=0.0005,
-        help='weight decay for optimizer')
-    parser.add_argument(
-        '--lr-ratio',
-        type=float,
-        default=0.001,
-        help='decay rate for learning rate')
-    parser.add_argument(
-        '--lr-decay-rate',
-        type=float,
-        default=0.1,
-        help='decay rate for learning rate')
+    parser.add_argument('--nesterov', type=str2bool, default=False, help='use nesterov or not')
+    parser.add_argument('--batch-size', type=int, default=256, help='training batch size')
+    parser.add_argument('--test-batch-size', type=int, default=256, help='test batch size')
+    parser.add_argument('--start-epoch', type=int, default=0, help='start training from which epoch')
+    parser.add_argument('--num-epoch', type=int, default=80, help='stop training in which epoch')
+    parser.add_argument('--weight-decay', type=float, default=0.0005, help='weight decay for optimizer')
+    parser.add_argument('--lr-ratio', type=float, default=0.001, help='decay rate for learning rate')
+    parser.add_argument('--lr-decay-rate', type=float, default=0.1, help='decay rate for learning rate')
     parser.add_argument('--warm_up_epoch', type=int, default=0)
     parser.add_argument('--loss-type', type=str, default='CE')
 
@@ -293,14 +203,21 @@ class Processor():
         Model = import_class(self.arg.model)
         shutil.copy2(inspect.getfile(Model), self.arg.work_dir)
         print(Model)
-        self.model = Model(**self.arg.model_args)
+        self.model = Model(
+            **self.arg.model_args,
+            cl_mode=self.arg.cl_mode,
+            multi_cl_weights=self.arg.w_multi_cl_loss,
+            cl_version=self.arg.cl_version,
+            pred_threshold=self.arg.pred_threshold,
+            use_p_map=self.arg.use_p_map
+        )
         if self.arg.loss_type == 'CE':
             self.loss = nn.CrossEntropyLoss().cuda(output_device)
         else:
             self.loss = LabelSmoothingCrossEntropy(smoothing=0.1).cuda(output_device)
 
         if self.arg.weights:
-            self.global_step = int(arg.weights[:-3].split('-')[-1])
+            self.global_step = int(self.arg.weights[:-3].split('-')[-1])
             self.print_log('Load weights from {}.'.format(self.arg.weights))
             if '.pkl' in self.arg.weights:
                 with open(self.arg.weights, 'r') as f:
@@ -408,9 +325,7 @@ class Processor():
         process = tqdm(loader)
 
         for batch_idx, (data, label, index) in enumerate(process):
-
             self.adjust_learning_rate(epoch, batch_idx)
-
             self.global_step += 1
             with torch.no_grad():
                 data = data.float().cuda(self.output_device)
@@ -418,21 +333,28 @@ class Processor():
             timer['dataloader'] += self.split_time()
 
             # forward
-            output = self.model(data)
+            if self.arg.cl_mode is not None:
+                output, cl_loss = self.model(data, label, get_cl_loss=True)
+            else:
+                output = self.model(data, label)
             loss = self.loss(output, label)
+            full_loss = loss.mean()
+            if self.arg.cl_mode is not None and epoch > self.arg.start_cl_epoch:
+                self.train_writer.add_scalar('cl_loss', cl_loss.mean().data.item(), self.global_step)
+                full_loss += self.arg.w_cl_loss * cl_loss.mean()
             # backward
             self.optimizer.zero_grad()
-            loss.backward()
+            full_loss.backward()
             self.optimizer.step()
 
-            loss_value.append(loss.data.item())
+            loss_value.append(loss.mean().data.item())
             timer['model'] += self.split_time()
 
             value, predict_label = torch.max(output.data, 1)
             acc = torch.mean((predict_label == label.data).float())
             acc_value.append(acc.data.item())
             self.train_writer.add_scalar('acc', acc, self.global_step)
-            self.train_writer.add_scalar('loss', loss.data.item(), self.global_step)
+            self.train_writer.add_scalar('loss', loss.mean().data.item(), self.global_step)
 
             # statistics
             self.lr = self.optimizer.param_groups[0]['lr']
@@ -441,19 +363,18 @@ class Processor():
 
         # statistics of time consumption and loss
         proportion = {
-            k: '{:02d}%'.format(int(round(v * 100 / sum(timer.values()))))
+            k: '{:02d}%'.format(int(round(v * 100 / sum(timer.values()))) )
             for k, v in timer.items()
         }
         self.print_log(
-            '\tMean training loss: {:.4f}.  Mean training acc: {:.2f}%.'.format(np.mean(loss_value), np.mean(acc_value)*100))
+            '\tMean training loss: {:.4f}.  Mean training acc: {:.2f}%.'.format(np.mean(loss_value), np.mean(acc_value) * 100))
         self.print_log('\tLearning Rate: {:.4f}'.format(self.lr))
         self.print_log('\tTime consumption: [Data]{dataloader}, [Network]{model}'.format(**proportion))
 
         if save_model:
             state_dict = self.model.state_dict()
             weights = OrderedDict([[k.split('module.')[-1], v.cpu()] for k, v in state_dict.items()])
-
-            torch.save(weights, self.arg.model_saved_name + '-' + str(epoch+1) + '-' + str(int(self.global_step)) + '.pt')
+            torch.save(weights, self.arg.model_saved_name + '-' + str(epoch + 1) + '-' + str(int(self.global_step)) + '.pt')
 
     def eval(self, epoch, save_score=False, loader_name=['test'], wrong_file=None, result_file=None):
         if wrong_file is not None:
